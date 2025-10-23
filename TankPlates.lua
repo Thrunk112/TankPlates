@@ -195,6 +195,8 @@ local function InitPlate(plate)
       elseif not unit.casting and (not unit.current_target and unit.previous_target == player_guid) then
         -- fleeing but was attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
+	  elseif unit.parryTime and (GetTime() - unit.parryTime <= 1.8) then   
+			this:SetStatusBarColor(.35,1,1,1) --light blue
       else
         -- not attacking you
         this:SetStatusBarColor(1, 0, 0, 1) -- red
@@ -236,6 +238,7 @@ local function Update()
             cc = false,
             casting = false,
             casting_at = nil,
+			parryTime = nil
           }
         end
       end
@@ -275,7 +278,21 @@ local function Events()
         break
       end
     end
-  end
+	elseif event == "RAW_COMBATLOG" then
+		if arg1 == "CHAT_MSG_COMBAT_SELF_MISSES" then
+			-- Auto-attack / white hit
+			if string.find(arg2, "parries") then
+				local _, _, guid = string.find(arg2, "(0x%x+)")
+				tracked_guids[guid].parryTime = GetTime()
+			end
+		elseif arg1 == "CHAT_MSG_SPELL_SELF_DAMAGE" then
+			-- Special attack / yellow hit
+			if string.find(arg2, "parried by") then
+				local _, _, guid = string.find(arg2, "(0x%x+)")
+				tracked_guids[guid].parryTime = GetTime()
+			end
+		end
+	end
 end
 
 local function Init()
@@ -291,3 +308,4 @@ local tankplates = CreateFrame("Frame")
 tankplates:SetScript("OnEvent", Init)
 tankplates:RegisterEvent("PLAYER_ENTERING_WORLD")
 tankplates:RegisterEvent("UNIT_CASTEVENT")
+tankplates:RegisterEvent("RAW_COMBATLOG")
