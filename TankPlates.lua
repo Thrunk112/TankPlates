@@ -10,67 +10,21 @@ local function debug_print(msg)
 end
 
 local L = "TankPlates"
-if (GetLocale() == "ruRU") then
-
- SUPERWOW_REQ = "[|cff00ff00Tank|cffff0000Plates|r] для работы требует |cffffd200SuperWoW|r."
-cc_spells = {
-  "Превращение",
-  "Сковывание нежити",
-  "Замораживающая ловушка",
-  "Спячка",
-  "Парализующий удар",
-  "Ошеломление",
-  "Волшебная пыль",
-}
-else
-
- SUPERWOW_REQ = "[|cff00ff00Tank|cffff0000Plates|r] requires |cffffd200SuperWoW|r to operate."
-cc_spells = {
-  "Polymorph",
-  "Shackle Undead",
-  "Freezing Trap",
-  "Hibernate",
-  "Gouge",
-  "Sap",
-  "Magic Dust",
-}
-end
 
 -- stop loading addon if no superwow
 if not SetAutoloot then
-  DEFAULT_CHAT_FRAME:AddMessage(SUPERWOW_REQ)
+  DEFAULT_CHAT_FRAME:AddMessage("[|cff00ff00Tank|cffff0000Plates|r] requires |cffffd200SuperWoW|r to operate.")
   return
+end
+local HasUnitXP = pcall(UnitXP, "nop", "nop")
+if not HasUnitXP then
+	DEFAULT_CHAT_FRAME:AddMessage("[|cff00ff00Tank|cffff0000Plates|r] requires |cffffd200UnitXP|r to operate.")
+	return
 end
 
 local player_guid = nil
 local tracked_guids = {}
 
-local cc_spells = {
-  "Polymorph",
-  "Shackle Undead",
-  "Freezing Trap",
-  "Hibernate",
-  "Gouge",
-  "Sap",
-  "Magic Dust",
-}
-
--- shackle, sheep, hibernate, magic dust, etc
-local function UnitIsCC(unit)
-  for i=1,40 do
-    local dTexture,_,_,spell_id = UnitDebuff(unit,i)
-    local name = SpellInfo(spell_id)
-    if spell_id and name then
-      local name = SpellInfo(spell_id)
-      for _,spell in ipairs(cc_spells) do
-        if string.find(name,"^"..spell) then
-          return true
-        end
-      end
-    end
-  end
-  return false
-end
 
 local function IsBehindUnit(guid)
   if not UnitExists(guid) then return false end
@@ -138,10 +92,9 @@ local function InitPlate(plate)
 
     UpdateTarget(guid)
 
-    -- cc check
+    -- behind check
     if tracked_guids[guid].tick > 0.1 then
       tracked_guids[guid].tick = 0
-      tracked_guids[guid].cc = UnitIsCC(guid)
 	   tracked_guids[guid].behind = IsBehindUnit(guid)
     end
   end)
@@ -180,24 +133,10 @@ local function InitPlate(plate)
     -- if UnitAffectingCombat("player") and UnitAffectingCombat(guid) then
     if UnitAffectingCombat("player") and UnitAffectingCombat(guid) and
       not UnitCanAssist("player",guid) then -- don't color friendlies
-
-      -- The cases we want 'green' for are:
-      -- 1. Being the previous target if a mob is casting on someone else
-      -- 2. Being targeted
-      -- 3. Being the previous target when a mob has no current target
-
-      if unit.cc then
-        -- PFUI and ShaguPlates use enemy bar colors to determine types, this can really mess with things.
-        -- For instance if we choose (0,0,1,1) blue, the shagu reads this as friendly player and may color based on class.
-        -- Due to this yellow (neutral) has been chosen for now.
-        this:SetStatusBarColor(1, 1, 0, 0.6)
-      elseif (unit.casting and (unit.casting_at == player_guid or unit.previous_target == player_guid)) then
-        -- casting on someone but was attacking you
-        this:SetStatusBarColor(0, 1, 0, 1) -- green
-      elseif unit.current_target == player_guid then
+      if unit.current_target == player_guid then
         -- attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
-      elseif not unit.casting and (not unit.current_target and unit.previous_target == player_guid) then
+      elseif not unit.current_target and unit.previous_target == player_guid then
         -- fleeing but was attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
 	  elseif unit.behind == false then 
@@ -240,9 +179,6 @@ local function Update()
             current_target = nil,
             previous_target = nil,
             tick = 0,
-            cc = false,
-            casting = false,
-            casting_at = nil,
 			behind = false,
           }
         end
@@ -262,35 +198,10 @@ local function Update()
   end
 end
 
-local function Events()
-  if event == "UNIT_CASTEVENT" then
-    local _,source = UnitExists(arg1)
-    local _,target = UnitExists(arg2)
-
-    if not source then return end
-
-    for guid,data in pairs(tracked_guids) do
-      if source == guid then
-        if arg3 == "START" then
-          tracked_guids[guid].casting = true
-          if target and target ~= "" then
-            tracked_guids[guid].casting_at = target
-          end
-        elseif arg3 == "FAIL" or arg3 == "CAST" then
-          tracked_guids[guid].casting = false
-          tracked_guids[guid].casting_at = nil
-        end
-        break
-      end
-    end
-	end
-end
-
 
 local function Init()
   if event == "PLAYER_ENTERING_WORLD" then
     _,player_guid = UnitExists("player")
-    this:SetScript("OnEvent", Events)
     this:SetScript("OnUpdate", Update)
     this:UnregisterEvent("PLAYER_ENTERING_WORLD")
   end
@@ -299,4 +210,3 @@ end
 local tankplates = CreateFrame("Frame")
 tankplates:SetScript("OnEvent", Init)
 tankplates:RegisterEvent("PLAYER_ENTERING_WORLD")
-tankplates:RegisterEvent("UNIT_CASTEVENT")
