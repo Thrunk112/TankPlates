@@ -72,6 +72,10 @@ local function UnitIsCC(unit)
   return false
 end
 
+local function IsBehindUnit(guid)
+  if not UnitExists(guid) then return false end
+  return UnitXP("behind", "player", guid) == true
+end
 -- Copied from shagu since it resembled what I was trying to do anyway
 -- [ HookScript ]
 -- Securely post-hooks a script handler.
@@ -138,6 +142,7 @@ local function InitPlate(plate)
     if tracked_guids[guid].tick > 0.1 then
       tracked_guids[guid].tick = 0
       tracked_guids[guid].cc = UnitIsCC(guid)
+	   tracked_guids[guid].behind = IsBehindUnit(guid)
     end
   end)
 
@@ -195,7 +200,7 @@ local function InitPlate(plate)
       elseif not unit.casting and (not unit.current_target and unit.previous_target == player_guid) then
         -- fleeing but was attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
-	  elseif unit.parryTime and (GetTime() - unit.parryTime <= 1.8) then   
+	  elseif unit.behind == false then 
 			this:SetStatusBarColor(.35,1,1,1) --light blue
       else
         -- not attacking you
@@ -238,7 +243,7 @@ local function Update()
             cc = false,
             casting = false,
             casting_at = nil,
-			parryTime = nil
+			behind = false,
           }
         end
       end
@@ -278,22 +283,9 @@ local function Events()
         break
       end
     end
-	elseif event == "RAW_COMBATLOG" then
-		if arg1 == "CHAT_MSG_COMBAT_SELF_MISSES" then
-			-- Auto-attack / white hit
-			if string.find(arg2, "parries") then
-				local _, _, guid = string.find(arg2, "(0x%x+)")
-				tracked_guids[guid].parryTime = GetTime()
-			end
-		elseif arg1 == "CHAT_MSG_SPELL_SELF_DAMAGE" then
-			-- Special attack / yellow hit
-			if string.find(arg2, "parried by") then
-				local _, _, guid = string.find(arg2, "(0x%x+)")
-				tracked_guids[guid].parryTime = GetTime()
-			end
-		end
 	end
 end
+
 
 local function Init()
   if event == "PLAYER_ENTERING_WORLD" then
@@ -308,4 +300,3 @@ local tankplates = CreateFrame("Frame")
 tankplates:SetScript("OnEvent", Init)
 tankplates:RegisterEvent("PLAYER_ENTERING_WORLD")
 tankplates:RegisterEvent("UNIT_CASTEVENT")
-tankplates:RegisterEvent("RAW_COMBATLOG")
