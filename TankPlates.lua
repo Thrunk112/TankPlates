@@ -21,6 +21,13 @@ if not HasUnitXP then
 	DEFAULT_CHAT_FRAME:AddMessage("[|cff00ff00Tank|cffff0000Plates|r] requires |cffffd200UnitXP|r to operate.")
 	return
 end
+local hasPfUI = false
+local function CheckPfUI()
+    if pfUI then
+        hasPfUI = true
+        DEFAULT_CHAT_FRAME:AddMessage("[|cff00ff00Tank|cffff0000Plates|r] pfUI detected, behind set to yellow for compatibility.")
+    end
+end
 
 local player_guid = nil
 local tracked_guids = {}
@@ -133,15 +140,23 @@ local function InitPlate(plate)
     -- if UnitAffectingCombat("player") and UnitAffectingCombat(guid) then
     if UnitAffectingCombat("player") and UnitAffectingCombat(guid) and
       not UnitCanAssist("player",guid) then -- don't color friendlies
-      if unit.current_target == player_guid then
+	  if (unit.casting and (unit.casting_at == player_guid or unit.previous_target == player_guid)) then
+        -- casting on someone but was attacking you
+        this:SetStatusBarColor(0, 1, 0, 1) -- green
+	  elseif unit.current_target == player_guid then
         -- attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
-      elseif not unit.current_target and unit.previous_target == player_guid then
+      elseif not unit.casting and (not unit.current_target and unit.previous_target == player_guid) then
         -- fleeing but was attacking you
         this:SetStatusBarColor(0, 1, 0, 1) -- green
-	  elseif unit.behind == false then 
-			this:SetStatusBarColor(.35,1,1,1) --light blue
-      else
+	  elseif unit.behind == false then
+        -- in front
+        if hasPfUI then
+            this:SetStatusBarColor(1, 1, 0, 0.6) -- yellow for pfUI
+        else
+            this:SetStatusBarColor(0.58, 0, .75, 1) -- Purple
+        end
+    else
         -- not attacking you
         this:SetStatusBarColor(1, 0, 0, 1) -- red
       end
@@ -180,6 +195,8 @@ local function Update()
             previous_target = nil,
             tick = 0,
 			behind = false,
+			casting = false,
+            casting_at = nil,
           }
         end
       end
@@ -198,10 +215,35 @@ local function Update()
   end
 end
 
+local function Events()
+  if event == "UNIT_CASTEVENT" then
+    local _,source = UnitExists(arg1)
+    local _,target = UnitExists(arg2)
+
+    if not source then return end
+
+    for guid,data in pairs(tracked_guids) do
+      if source == guid then
+        if arg3 == "START" then
+          tracked_guids[guid].casting = true
+          if target and target ~= "" then
+            tracked_guids[guid].casting_at = target
+          end
+        elseif arg3 == "FAIL" or arg3 == "CAST" then
+          tracked_guids[guid].casting = false
+          tracked_guids[guid].casting_at = nil
+        end
+        break
+      end
+    end
+  end
+end
 
 local function Init()
   if event == "PLAYER_ENTERING_WORLD" then
+	CheckPfUI()
     _,player_guid = UnitExists("player")
+	this:SetScript("OnEvent", Events)
     this:SetScript("OnUpdate", Update)
     this:UnregisterEvent("PLAYER_ENTERING_WORLD")
   end
@@ -210,3 +252,4 @@ end
 local tankplates = CreateFrame("Frame")
 tankplates:SetScript("OnEvent", Init)
 tankplates:RegisterEvent("PLAYER_ENTERING_WORLD")
+tankplates:RegisterEvent("UNIT_CASTEVENT")
